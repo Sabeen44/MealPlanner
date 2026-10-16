@@ -1,12 +1,16 @@
 
 "use client";
 
+import { estimateCalories } from "./lib/calorie";
+import Link from "next/link";
+
 import { useState, type FormEvent } from "react";
 
 type Goal = "lose" | "maintain" | "gain";
 type Activity = "sedentary" | "light" | "moderate" | "high";
 type HeightUnit = "cm" | "ft";
 type WeightUnit = "kg" | "lb";
+type SexForEquation = "male" | "female";
 
 type Profile = {
   age: number;
@@ -14,6 +18,10 @@ type Profile = {
   weightKg: number;
   activity: Activity;
   goal: Goal;
+  sexForEquation: SexForEquation;
+  restingCalories: number;
+  maintenanceCalories: number;
+  targetCalories: number;
 };
 
 const inputClass =
@@ -37,6 +45,7 @@ const goals: { value: Goal; label: string; description: string }[] = [
 export default function Home() {
   const [heightUnit, setHeightUnit] = useState<HeightUnit>("cm");
   const [weightUnit, setWeightUnit] = useState<WeightUnit>("kg");
+  const [sexForEquation, setSexForEquation] =useState<SexForEquation | "">("");
 
   const [age, setAge] = useState("");
   const [height, setHeight] = useState("");
@@ -49,8 +58,11 @@ export default function Home() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [profile, setProfile] = useState<Profile | null>(null);
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+
+    function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  event.preventDefault();
+
+  console.log("Form submitted!");
 
     const nextErrors: Record<string, string> = {};
 
@@ -114,19 +126,50 @@ export default function Home() {
       nextErrors.goal = "Please choose your goal.";
     }
 
+      if (!sexForEquation) {
+  nextErrors.sexForEquation = "Choose a calculation setting.";
+}
+
     setErrors(nextErrors);
 
-    if (Object.keys(nextErrors).length > 0 || !activity || !goal) {
-      return;
-    }
+    console.log("Validation errors:", nextErrors);
+console.log("Selected values:", {
+  activity,
+  goal,
+  sexForEquation,
+});
 
-    setProfile({
-      age: ageValue,
-      heightCm: Math.round(heightCm * 10) / 10,
-      weightKg: Math.round(weightKg * 10) / 10,
-      activity,
-      goal,
-    });
+  
+
+    if (
+  Object.keys(nextErrors).length > 0 ||
+  !activity ||
+  !goal ||
+  !sexForEquation
+) {
+  return;
+}
+
+const estimate = estimateCalories({
+  age: ageValue,
+  heightCm,
+  weightKg,
+  sexForEquation,
+  activity,
+  goal,
+});
+
+  setProfile({
+  age: ageValue,
+  heightCm: Math.round(heightCm * 10) / 10,
+  weightKg: Math.round(weightKg * 10) / 10,
+  activity,
+  goal,
+  sexForEquation,
+  restingCalories: estimate.restingCalories,
+  maintenanceCalories: estimate.maintenanceCalories,
+  targetCalories: estimate.targetCalories,
+});
 
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
@@ -184,7 +227,7 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-[#f8f7f2] text-stone-900">
       <header className="flex items-center justify-between border-b border-stone-200 bg-white px-5 py-4 sm:px-10">
-        <a href="/" className="flex items-center gap-3">
+        <Link href="/" className="flex items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-800 text-xl text-white">
             ✳
           </div>
@@ -194,7 +237,7 @@ export default function Home() {
               Pakistani food, made balanced
             </p>
           </div>
-        </a>
+        </Link>
         <span className="hidden text-sm text-stone-500 sm:block">
           Your journey starts here
         </span>
@@ -280,22 +323,40 @@ export default function Home() {
                 ))}
               </dl>
 
-              <div className="mt-6 rounded-xl bg-stone-50 p-4">
-                <p className="text-sm font-medium">Next up</p>
-                <p className="mt-1 text-sm leading-6 text-stone-600">
-                  The next step will estimate your daily calorie needs and use
-                  them to help plan balanced Pakistani meals.
-                </p>
-              </div>
+              
+<div className="mt-6 rounded-2xl border border-emerald-100 bg-emerald-50 p-5">
+  <p className="text-sm font-medium text-emerald-900">
+    Your estimated daily calories
+  </p>
 
-              <button
-                type="button"
-                onClick={handleEdit}
-                className="mt-6 w-full rounded-xl border border-stone-300 px-5 py-3.5 text-sm font-semibold transition hover:bg-stone-50"
-              >
-                Edit my details
-              </button>
-            </div>
+  <p className="mt-2 text-3xl font-semibold text-emerald-950">
+    {profile.targetCalories.toLocaleString()} kcal
+  </p>
+
+  <p className="mt-2 text-sm leading-6 text-stone-600">
+    This is an initial estimate based on your profile, activity level,
+    and goal—not a measurement or a medical recommendation.
+  </p>
+
+  <div className="mt-4 border-t border-emerald-100 pt-4 text-sm text-stone-700">
+    <div className="flex justify-between gap-4 py-1">
+      <span>Estimated resting calories</span>
+      <span className="font-medium">
+        {profile.restingCalories.toLocaleString()} kcal
+      </span>
+    </div>
+
+    <div className="flex justify-between gap-4 py-1">
+      <span>Estimated maintenance calories</span>
+      <span className="font-medium">
+        {profile.maintenanceCalories.toLocaleString()} kcal
+      </span>
+    </div>
+  </div>
+</div>
+</div>
+
+
           ) : (
             <>
               <div className="mb-7">
@@ -482,6 +543,32 @@ export default function Home() {
                     </p>
                   )}
                 </div>
+
+                <div>
+  <label htmlFor="sexForEquation" className={labelClass}>
+    Calorie calculation setting
+  </label>
+
+  <select
+    id="sexForEquation"
+    value={sexForEquation}
+    onChange={(e) =>
+      setSexForEquation(e.target.value as SexForEquation | "")
+    }
+    aria-invalid={!!errors.sexForEquation}
+    className={inputClass}
+  >
+    <option value="">Choose a setting</option>
+    <option value="female">Female coefficient</option>
+    <option value="male">Male coefficient</option>
+  </select>
+
+  {errors.sexForEquation && (
+    <p role="alert" className="mt-2 text-sm text-red-700">
+      {errors.sexForEquation}
+    </p>
+  )}
+</div>
 
                 <div>
                   <label htmlFor="activity" className={labelClass}>
