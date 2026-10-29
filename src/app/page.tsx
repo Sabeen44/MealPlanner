@@ -11,6 +11,7 @@ type Activity = "sedentary" | "light" | "moderate" | "high";
 type HeightUnit = "cm" | "ft";
 type WeightUnit = "kg" | "lb";
 type SexForEquation = "male" | "female";
+type CalorieMode = "calculated" | "manual";
 
 type Profile = {
   age: number;
@@ -18,9 +19,10 @@ type Profile = {
   weightKg: number;
   activity: Activity;
   goal: Goal;
-  sexForEquation: SexForEquation;
-  restingCalories: number;
-  maintenanceCalories: number;
+  sexForEquation: SexForEquation | "";
+  calorieMode: CalorieMode;
+  restingCalories: number | null;
+  maintenanceCalories: number | null;
   targetCalories: number;
 };
 
@@ -57,12 +59,15 @@ export default function Home() {
 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [calorieMode, setCalorieMode] =
+  useState<CalorieMode>("calculated");
+
+const [manualCalories, setManualCalories] = useState("");
 
 
     function handleSubmit(event: FormEvent<HTMLFormElement>) {
   event.preventDefault();
 
-  console.log("Form submitted!");
 
     const nextErrors: Record<string, string> = {};
 
@@ -126,38 +131,48 @@ export default function Home() {
       nextErrors.goal = "Please choose your goal.";
     }
 
-      if (!sexForEquation) {
+     if (calorieMode === "calculated" && !sexForEquation) {
   nextErrors.sexForEquation = "Choose a calculation setting.";
+}
+
+if (calorieMode === "manual") {
+  const value = Number(manualCalories);
+
+  if (
+    manualCalories.trim() === "" ||
+    !Number.isInteger(value) ||
+    value <= 0
+  ) {
+    nextErrors.manualCalories =
+      "Enter a valid positive whole-number calorie target.";
+  }
 }
 
     setErrors(nextErrors);
 
-    console.log("Validation errors:", nextErrors);
-console.log("Selected values:", {
-  activity,
-  goal,
-  sexForEquation,
-});
 
   
 
-    if (
+   if (
   Object.keys(nextErrors).length > 0 ||
   !activity ||
   !goal ||
-  !sexForEquation
+  (calorieMode === "calculated" && !sexForEquation)
 ) {
   return;
 }
 
-const estimate = estimateCalories({
-  age: ageValue,
-  heightCm,
-  weightKg,
-  sexForEquation,
-  activity,
-  goal,
-});
+const estimate =
+  calorieMode === "calculated" && sexForEquation !== ""
+    ? estimateCalories({
+        age: ageValue,
+        heightCm,
+        weightKg,
+        sexForEquation,
+        activity,
+        goal,
+      })
+    : null;
 
   setProfile({
   age: ageValue,
@@ -165,10 +180,17 @@ const estimate = estimateCalories({
   weightKg: Math.round(weightKg * 10) / 10,
   activity,
   goal,
-  sexForEquation,
-  restingCalories: estimate.restingCalories,
-  maintenanceCalories: estimate.maintenanceCalories,
-  targetCalories: estimate.targetCalories,
+  sexForEquation:
+  calorieMode === "calculated" && sexForEquation !== ""
+    ? sexForEquation
+    : "",
+  calorieMode,
+  restingCalories: estimate?.restingCalories ?? null,
+  maintenanceCalories: estimate?.maintenanceCalories ?? null,
+  targetCalories:
+    calorieMode === "manual"
+      ? Number(manualCalories)
+      : estimate!.targetCalories,
 });
 
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -326,34 +348,48 @@ const estimate = estimateCalories({
               
 <div className="mt-6 rounded-2xl border border-emerald-100 bg-emerald-50 p-5">
   <p className="text-sm font-medium text-emerald-900">
-    Your estimated daily calories
+    {profile.calorieMode === "manual"
+      ? "Your selected daily calorie target"
+      : "Your estimated daily calorie target"}
   </p>
-
   <p className="mt-2 text-3xl font-semibold text-emerald-950">
     {profile.targetCalories.toLocaleString()} kcal
   </p>
-
-  <p className="mt-2 text-sm leading-6 text-stone-600">
-    This is an initial estimate based on your profile, activity level,
-    and goal—not a measurement or a medical recommendation.
-  </p>
-
-  <div className="mt-4 border-t border-emerald-100 pt-4 text-sm text-stone-700">
-    <div className="flex justify-between gap-4 py-1">
-      <span>Estimated resting calories</span>
-      <span className="font-medium">
-        {profile.restingCalories.toLocaleString()} kcal
-      </span>
-    </div>
-
-    <div className="flex justify-between gap-4 py-1">
-      <span>Estimated maintenance calories</span>
-      <span className="font-medium">
-        {profile.maintenanceCalories.toLocaleString()} kcal
-      </span>
-    </div>
-  </div>
+  {profile.calorieMode === "calculated" ? (
+    <>
+      <p className="mt-2 text-sm leading-6 text-stone-600">
+        This is an initial estimate, not a medical recommendation.
+      </p>
+      <div className="mt-4 border-t border-emerald-100 pt-4 text-sm text-stone-700">
+        <div className="flex justify-between gap-4 py-1">
+          <span>Estimated resting calories</span>
+          <span className="font-medium">
+            {profile.restingCalories?.toLocaleString()} kcal
+          </span>
+        </div>
+        <div className="flex justify-between gap-4 py-1">
+          <span>Estimated maintenance calories</span>
+          <span className="font-medium">
+            {profile.maintenanceCalories?.toLocaleString()} kcal
+          </span>
+        </div>
+      </div>
+    </>
+  ) : (
+    <p className="mt-2 text-sm leading-6 text-stone-600">
+      You entered your own calorie target. This target has not been
+      assessed for nutritional suitability.
+    </p>
+  )}
 </div>
+
+<button
+  type="button"
+  onClick={handleEdit}
+  className="mt-6 w-full rounded-xl border border-stone-300 px-5 py-3.5 text-sm font-semibold transition hover:bg-stone-50"
+>
+  Edit my details
+</button>
 </div>
 
 
@@ -545,32 +581,6 @@ const estimate = estimateCalories({
                 </div>
 
                 <div>
-  <label htmlFor="sexForEquation" className={labelClass}>
-    Calorie calculation setting
-  </label>
-
-  <select
-    id="sexForEquation"
-    value={sexForEquation}
-    onChange={(e) =>
-      setSexForEquation(e.target.value as SexForEquation | "")
-    }
-    aria-invalid={!!errors.sexForEquation}
-    className={inputClass}
-  >
-    <option value="">Choose a setting</option>
-    <option value="female">Female coefficient</option>
-    <option value="male">Male coefficient</option>
-  </select>
-
-  {errors.sexForEquation && (
-    <p role="alert" className="mt-2 text-sm text-red-700">
-      {errors.sexForEquation}
-    </p>
-  )}
-</div>
-
-                <div>
                   <label htmlFor="activity" className={labelClass}>
                     Activity level
                   </label>
@@ -630,6 +640,102 @@ const estimate = estimateCalories({
                     </p>
                   )}
                 </fieldset>
+                <div>
+  <label className={labelClass}>Daily calorie target</label>
+
+  <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
+    <label className={`cursor-pointer rounded-xl border p-4 ${
+      calorieMode === "calculated"
+        ? "border-emerald-800 bg-emerald-50"
+        : "border-stone-200"
+    }`}>
+      <input
+        type="radio"
+        name="calorieMode"
+        value="calculated"
+        checked={calorieMode === "calculated"}
+        onChange={() => setCalorieMode("calculated")}
+        className="mr-2 accent-emerald-800"
+      />
+      Calculate for me
+    </label>
+
+    <label className={`cursor-pointer rounded-xl border p-4 ${
+      calorieMode === "manual"
+        ? "border-emerald-800 bg-emerald-50"
+        : "border-stone-200"
+    }`}>
+      <input
+        type="radio"
+        name="calorieMode"
+        value="manual"
+        checked={calorieMode === "manual"}
+        onChange={() => setCalorieMode("manual")}
+        className="mr-2 accent-emerald-800"
+      />
+      Enter my own target
+    </label>
+  </div>
+
+  {calorieMode === "calculated" && (
+    <div>
+  <label htmlFor="sexForEquation" className={labelClass}>
+    Calorie calculation setting
+  </label>
+
+  <select
+    id="sexForEquation"
+    value={sexForEquation}
+    onChange={(e) =>
+      setSexForEquation(e.target.value as SexForEquation | "")
+    }
+    aria-invalid={!!errors.sexForEquation}
+    className={inputClass}
+  >
+    <option value="">Choose a setting</option>
+    <option value="female">Female coefficient</option>
+    <option value="male">Male coefficient</option>
+  </select>
+
+  {errors.sexForEquation && (
+    <p role="alert" className="mt-2 text-sm text-red-700">
+      {errors.sexForEquation}
+    </p>
+  )}
+</div>
+  )}
+
+  {calorieMode === "manual" && (
+    <div className="mt-4">
+      <label htmlFor="manualCalories" className={labelClass}>
+        My daily calorie target (kcal)
+      </label>
+
+      <input
+        id="manualCalories"
+        type="number"
+        min="1"
+        step="1"
+        value={manualCalories}
+        onChange={(e) => setManualCalories(e.target.value)}
+        placeholder="e.g. 1800"
+        aria-invalid={!!errors.manualCalories}
+        className={inputClass}
+      />
+
+      {errors.manualCalories && (
+        <p role="alert" className="mt-2 text-sm text-red-700">
+          {errors.manualCalories}
+        </p>
+      )}
+
+      <p className="mt-2 text-xs text-stone-500">
+        Enter a calorie target recommended by your healthcare
+        professional or one you previously established.
+      </p>
+    </div>
+  )}
+</div>
 
                 <button
                   type="submit"
