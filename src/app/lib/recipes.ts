@@ -18,6 +18,7 @@ export type Recipe = {
   description: string;
 
   mealTypes: MealType[];
+  category?: "main" | "side" | "standalone";
 
   // Total servings prepared by the recipe
   servings: number;
@@ -40,8 +41,8 @@ export const chickenKarahi: Recipe = {
   id: "chicken-karahi",
   name: "Chicken Karahi",
   description: "A traditional Pakistani chicken curry.",
-
   mealTypes: ["lunch", "dinner"],
+  category: "main",
   servings: 4,
 
   ingredients: [
@@ -360,6 +361,47 @@ export const fruitChaat: Recipe = {
 };
 
 
+export const wholeWheatRoti: Recipe = {
+  id: "whole-wheat-roti",
+  name: "Whole Wheat Roti",
+  description:
+    "Traditional Pakistani whole wheat flatbread made with atta and water, cooked on a tawa without oil.",
+  status: "draft",
+  mealTypes: ["breakfast", "lunch", "dinner"],
+  category: "side",
+  servings: 4,
+  ingredients: [
+    {
+      name: "Whole wheat flour (atta)",
+      quantity: 160,
+      unit: "g",
+    },
+    {
+      name: "Water",
+      quantity: 100,
+      unit: "ml",
+    },
+  ],
+
+  // Placeholder nutrition per serving (1 roti)
+  calories: 145,
+  protein: 5,
+  carbs: 30,
+  fat: 1,
+
+  instructions: [
+    "Combine the whole wheat flour and water in a bowl.",
+    "Knead into a soft, smooth dough.",
+    "Cover and let the dough rest for 15–20 minutes.",
+    "Divide the dough into four equal balls.",
+    "Roll each ball into a thin, round roti.",
+    "Heat a tawa over medium-high heat.",
+    "Cook each roti on both sides until lightly browned and cooked through.",
+    "Serve warm without adding oil or ghee.",
+  ],
+};
+
+
 
 
 export const recipes: Recipe[] = [
@@ -371,4 +413,5 @@ export const recipes: Recipe[] = [
        chickenPulao,
   bhindiMasala,
   fruitChaat,
+    wholeWheatRoti,
 ];
