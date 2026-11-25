@@ -332,20 +332,26 @@ export function selectMealCombination(
 }
 
 
+
 export type GeneratedDailyMealPlan = {
   plan: DailyMealPlan;
   nutrition: ReturnType<typeof calculateDailyNutrition>;
   calorieTarget: number;
   calorieDifference: number;
+  evaluation: DailyPlanEvaluation;
+  proteinEvaluation?: ProteinEvaluation;
 };
+
 
 export function generateDailyMealPlan(
   recipes: Recipe[],
-  dailyCalorieTarget: number
+  dailyCalorieTarget: number,
+   proteinTarget?: number
 ): GeneratedDailyMealPlan | null {
   const targets = calculateMealCalorieTargets(
     dailyCalorieTarget
   );
+   
 
   function selectMeal(
     mealType: Recipe["mealTypes"][number],
@@ -416,14 +422,263 @@ export function generateDailyMealPlan(
     snacks,
   };
 
+
+
+const balancedPlan = rebalanceDailyMealPlan(
+  plan,
+  dailyCalorieTarget
+);
+
+const nutrition = calculateDailyNutrition(balancedPlan);
+
+const evaluation = evaluateDailyMealPlan(
+  balancedPlan,
+  dailyCalorieTarget
+);
+
+const proteinEvaluation =
+  proteinTarget === undefined
+    ? undefined
+    : evaluateProteinTarget(nutrition.protein, proteinTarget);
+
+return {
+  plan: balancedPlan,
+  nutrition,
+  calorieTarget: dailyCalorieTarget,
+  calorieDifference: nutrition.calories - dailyCalorieTarget,
+  evaluation,
+  proteinEvaluation,
+};
+}
+
+
+export type MealEvaluation = {
+  calories: number;
+  target: number;
+  min: number;
+  max: number;
+  withinRange: boolean;
+};
+
+export type DailyPlanEvaluation = {
+  totalCalories: number;
+  dailyTarget: number;
+  calorieDifference: number;
+  percentageDifference: number;
+  withinDailyTolerance: boolean;
+  meals: Record<keyof DailyMealPlan, MealEvaluation>;
+  allMealsWithinRange: boolean;
+};
+
+export function evaluateDailyMealPlan(
+  plan: DailyMealPlan,
+  dailyCalorieTarget: number
+): DailyPlanEvaluation {
+  const targets = calculateMealCalorieTargets(
+    dailyCalorieTarget
+  );
+
   const nutrition = calculateDailyNutrition(plan);
 
+  const mealNames: (keyof DailyMealPlan)[] = [
+    "breakfast",
+    "lunch",
+    "dinner",
+    "snacks",
+  ];
+
+  const meals = {} as Record<
+    keyof DailyMealPlan,
+    MealEvaluation
+  >;
+
+  for (const mealName of mealNames) {
+    const items = plan[mealName];
+
+    const calories =
+      items.length > 0
+        ? calculateMealNutrition(items).calories
+        : 0;
+
+    const target = targets[mealName];
+
+    meals[mealName] = {
+      calories,
+      target: target.target,
+      min: target.min,
+      max: target.max,
+      withinRange:
+        calories >= target.min &&
+        calories <= target.max,
+    };
+  }
+
+  const calorieDifference =
+    nutrition.calories - dailyCalorieTarget;
+
+  const percentageDifference =
+    (calorieDifference / dailyCalorieTarget) * 100;
+
+  // Initial V1 tolerance: within 5% of daily target.
+  const withinDailyTolerance =
+    Math.abs(percentageDifference) <= 5;
+
   return {
-    plan,
-    nutrition,
-    calorieTarget: dailyCalorieTarget,
-    calorieDifference:
-      nutrition.calories - dailyCalorieTarget,
+    totalCalories: nutrition.calories,
+    dailyTarget: dailyCalorieTarget,
+    calorieDifference,
+    percentageDifference,
+    withinDailyTolerance,
+    meals,
+    allMealsWithinRange: mealNames.every(
+      (mealName) => meals[mealName].withinRange
+    ),
   };
 }
 
+
+export function rebalanceDailyMealPlan(
+  plan: DailyMealPlan,
+  dailyCalorieTarget: number
+): DailyMealPlan {
+  // Validate the target and all existing portions.
+  const targets = calculateMealCalorieTargets(
+    dailyCalorieTarget
+  );
+
+  calculateDailyNutrition(plan);
+
+  const mealNames: (keyof DailyMealPlan)[] = [
+    "breakfast",
+    "lunch",
+    "dinner",
+    "snacks",
+  ];
+
+  // Copy the plan so the original is not modified.
+  const balancedPlan: DailyMealPlan = {
+    breakfast: plan.breakfast.map((item) => ({ ...item })),
+    lunch: plan.lunch.map((item) => ({ ...item })),
+    dinner: plan.dinner.map((item) => ({ ...item })),
+    snacks: plan.snacks.map((item) => ({ ...item })),
+  };
+
+  const initialDifference = Math.abs(
+    calculateDailyNutrition(balancedPlan).calories -
+      dailyCalorieTarget
+  );
+
+  let bestDifference = initialDifference;
+
+  // Continue until no single portion change improves
+  // the daily calorie difference.
+  let improved = true;
+
+  while (improved) {
+    improved = false;
+
+    for (const mealName of mealNames) {
+      const meal = balancedPlan[mealName];
+
+      for (let index = 0; index < meal.length; index++) {
+        const item = meal[index];
+
+        for (const portions of getAllowedPortions()) {
+          const candidateMeal = meal.map(
+            (currentItem, currentIndex) =>
+              currentIndex === index
+                ? { ...currentItem, portions }
+                : { ...currentItem }
+          );
+
+          const mealCalories =
+            calculateMealNutrition(candidateMeal).calories;
+
+          const range = targets[mealName];
+
+          // Keep the adjusted meal within its range.
+          if (
+            mealCalories < range.min ||
+            mealCalories > range.max
+          ) {
+            continue;
+          }
+
+          const candidatePlan: DailyMealPlan = {
+            ...balancedPlan,
+            [mealName]: candidateMeal,
+          };
+
+          const candidateDifference = Math.abs(
+            calculateDailyNutrition(candidatePlan).calories -
+              dailyCalorieTarget
+          );
+
+          if (candidateDifference < bestDifference - 1e-9) {
+            bestDifference = candidateDifference;
+            meal[index] = { ...item, portions };
+            improved = true;
+          }
+        }
+      }
+    }
+  }
+
+  return balancedPlan;
+}
+
+
+export type ProteinEvaluation = {
+  actualProtein: number;
+  targetProtein: number;
+  difference: number;
+  meetsTarget: boolean;
+  percentageOfTarget: number;
+};
+
+export function evaluateProteinTarget(
+  actualProtein: number,
+  targetProtein: number
+): ProteinEvaluation {
+  if (
+    !Number.isFinite(actualProtein) ||
+    actualProtein < 0 ||
+    !Number.isFinite(targetProtein) ||
+    targetProtein <= 0
+  ) {
+    throw new Error("Invalid protein values.");
+  }
+
+  return {
+    actualProtein,
+    targetProtein,
+    difference: actualProtein - targetProtein,
+    meetsTarget: actualProtein >= targetProtein,
+    percentageOfTarget:
+      (actualProtein / targetProtein) * 100,
+  };
+}
+
+
+export type ProteinGoal = "lose" | "maintain" | "gain";
+
+export const proteinFactors: Record<ProteinGoal, number> = {
+  lose: 1.2,
+  maintain: 1.0,
+  gain: 1.4,
+};
+
+export function calculateProteinTarget(
+  weightKg: number,
+  goal: ProteinGoal
+): number {
+  if (!Number.isFinite(weightKg) || weightKg <= 0) {
+    throw new Error("Weight must be a positive number.");
+  }
+
+  if (!Object.prototype.hasOwnProperty.call(proteinFactors, goal)) {
+    throw new Error("Invalid protein goal.");
+  }
+
+  return Math.round(weightKg * proteinFactors[goal]);
+}

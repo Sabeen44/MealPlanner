@@ -1,6 +1,6 @@
 
 import { describe, expect, it } from "vitest";
-import { getApprovedRecipes, getRecipesByMealType, calculatePortionNutrition,calculateMealNutrition,calculateDailyNutrition, getAllowedPortions,findBestPortion,selectRecipeForMeal,selectMealCombination,generateDailyMealPlan} from "./mealPlanner";
+import { getApprovedRecipes, getRecipesByMealType, calculatePortionNutrition,calculateMealNutrition,calculateDailyNutrition, getAllowedPortions,findBestPortion,selectRecipeForMeal,selectMealCombination,generateDailyMealPlan,evaluateDailyMealPlan,rebalanceDailyMealPlan,evaluateProteinTarget,calculateProteinTarget, type ProteinGoal,} from "./mealPlanner";
 import { chickenKarahi, masoorDaal, wholeWheatRoti, andaParatha,
 fruitChaat,} from "./recipes";
 
@@ -550,6 +550,284 @@ describe("generateDailyMealPlan", () => {
   it("rejects invalid calorie targets", () => {
     expect(() =>
       generateDailyMealPlan(approvedRecipes, 0)
+    ).toThrow();
+  });
+
+  it("returns a rebalanced plan with evaluation results", () => {
+  const result = generateDailyMealPlan(
+    approvedRecipes,
+    1800
+  );
+
+  expect(result).not.toBeNull();
+
+  if (!result) return;
+
+  const evaluation = evaluateDailyMealPlan(
+    result.plan,
+    1800
+  );
+
+  expect(result.evaluation).toEqual(evaluation);
+
+  expect(result.nutrition).toEqual(
+    calculateDailyNutrition(result.plan)
+  );
+
+  expect(result.calorieDifference).toBeCloseTo(
+    result.evaluation.calorieDifference
+  );
+});
+});
+
+
+
+
+
+
+describe("evaluateDailyMealPlan", () => {
+  it("evaluates a daily plan within calorie tolerance", () => {
+    const plan = {
+      breakfast: [
+        { recipe: andaParatha, portions: 1 },
+      ],
+      lunch: [
+        { recipe: chickenKarahi, portions: 1.5 },
+        { recipe: wholeWheatRoti, portions: 0.75 },
+      ],
+      dinner: [
+        { recipe: chickenKarahi, portions: 1 },
+        { recipe: wholeWheatRoti, portions: 1.5 },
+      ],
+      snacks: [
+        { recipe: fruitChaat, portions: 1 },
+      ],
+    };
+
+    const result = evaluateDailyMealPlan(plan, 1800);
+
+    expect(result.totalCalories).toBeCloseTo(1761.25);
+    expect(result.calorieDifference).toBeCloseTo(-38.75);
+    expect(result.withinDailyTolerance).toBe(true);
+    expect(result.allMealsWithinRange).toBe(true);
+    expect(result.meals.breakfast.withinRange).toBe(true);
+    expect(result.meals.lunch.withinRange).toBe(true);
+    expect(result.meals.dinner.withinRange).toBe(true);
+    expect(result.meals.snacks.withinRange).toBe(true);
+  });
+
+  it("identifies a plan below the daily tolerance", () => {
+    const plan = {
+      breakfast: [
+        { recipe: andaParatha, portions: 0.5 },
+      ],
+      lunch: [
+        { recipe: chickenKarahi, portions: 1 },
+      ],
+      dinner: [
+        { recipe: masoorDaal, portions: 1 },
+      ],
+      snacks: [
+        { recipe: fruitChaat, portions: 0.5 },
+      ],
+    };
+
+    const result = evaluateDailyMealPlan(plan, 1800);
+
+    expect(result.totalCalories).toBe(910);
+    expect(result.withinDailyTolerance).toBe(false);
+    expect(result.calorieDifference).toBe(-890);
+  });
+
+  it("rejects invalid daily calorie targets", () => {
+    const plan = {
+      breakfast: [],
+      lunch: [],
+      dinner: [],
+      snacks: [],
+    };
+
+    expect(() =>
+      evaluateDailyMealPlan(plan, 0)
+    ).toThrow();
+  });
+});
+
+
+describe("rebalanceDailyMealPlan", () => {
+  it("improves the daily calorie difference", () => {
+    const plan = {
+      breakfast: [
+        { recipe: andaParatha, portions: 1 },
+      ],
+      lunch: [
+        { recipe: chickenKarahi, portions: 1 },
+        { recipe: wholeWheatRoti, portions: 1 },
+      ],
+      dinner: [
+        { recipe: chickenKarahi, portions: 1 },
+        { recipe: wholeWheatRoti, portions: 1 },
+      ],
+      snacks: [
+        { recipe: fruitChaat, portions: 1 },
+      ],
+    };
+
+    const before = evaluateDailyMealPlan(plan, 1800);
+    const balanced = rebalanceDailyMealPlan(plan, 1800);
+    const after = evaluateDailyMealPlan(balanced, 1800);
+
+    expect(
+      Math.abs(after.calorieDifference)
+    ).toBeLessThan(
+      Math.abs(before.calorieDifference)
+    );
+  });
+
+  it("does not modify the original plan", () => {
+    const plan = {
+      breakfast: [
+        { recipe: andaParatha, portions: 1 },
+      ],
+      lunch: [
+        { recipe: chickenKarahi, portions: 1 },
+      ],
+      dinner: [
+        { recipe: chickenKarahi, portions: 1 },
+      ],
+      snacks: [
+        { recipe: fruitChaat, portions: 1 },
+      ],
+    };
+
+    const originalPortions =
+      plan.lunch[0].portions;
+
+    rebalanceDailyMealPlan(plan, 1800);
+
+    expect(plan.lunch[0].portions).toBe(
+      originalPortions
+    );
+  });
+
+  it("keeps adjusted portions within allowed limits", () => {
+    const plan = {
+      breakfast: [
+        { recipe: andaParatha, portions: 1 },
+      ],
+      lunch: [
+        { recipe: chickenKarahi, portions: 1 },
+        { recipe: wholeWheatRoti, portions: 1 },
+      ],
+      dinner: [
+        { recipe: chickenKarahi, portions: 1 },
+        { recipe: wholeWheatRoti, portions: 1 },
+      ],
+      snacks: [
+        { recipe: fruitChaat, portions: 1 },
+      ],
+    };
+
+    const balanced = rebalanceDailyMealPlan(plan, 1800);
+
+    const items = [
+      ...balanced.breakfast,
+      ...balanced.lunch,
+      ...balanced.dinner,
+      ...balanced.snacks,
+    ];
+
+    for (const item of items) {
+      expect(getAllowedPortions()).toContain(
+        item.portions
+      );
+    }
+  });
+
+  it("rejects invalid calorie targets", () => {
+    const plan = {
+      breakfast: [],
+      lunch: [],
+      dinner: [],
+      snacks: [],
+    };
+
+    expect(() =>
+      rebalanceDailyMealPlan(plan, 0)
+    ).toThrow();
+  });
+});
+
+
+describe("evaluateProteinTarget", () => {
+  it("identifies when protein meets the target", () => {
+    const result = evaluateProteinTarget(85, 80);
+
+    expect(result.meetsTarget).toBe(true);
+    expect(result.difference).toBe(5);
+    expect(result.percentageOfTarget).toBeCloseTo(106.25);
+  });
+
+  it("identifies when protein is below target", () => {
+    const result = evaluateProteinTarget(65, 80);
+
+    expect(result.meetsTarget).toBe(false);
+    expect(result.difference).toBe(-15);
+    expect(result.percentageOfTarget).toBeCloseTo(81.25);
+  });
+
+  it("accepts protein exactly at target", () => {
+    const result = evaluateProteinTarget(80, 80);
+
+    expect(result.meetsTarget).toBe(true);
+    expect(result.percentageOfTarget).toBe(100);
+  });
+
+  it("rejects invalid protein values", () => {
+    expect(() => evaluateProteinTarget(-5, 80)).toThrow();
+    expect(() => evaluateProteinTarget(65, 0)).toThrow();
+    expect(() => evaluateProteinTarget(NaN, 80)).toThrow();
+  });
+});
+
+
+describe("calculateProteinTarget", () => {
+  it("calculates protein for weight maintenance", () => {
+    expect(calculateProteinTarget(70, "maintain")).toBe(70);
+  });
+
+  it("calculates protein for weight loss", () => {
+    expect(calculateProteinTarget(70, "lose")).toBe(84);
+  });
+
+  it("calculates protein for weight gain", () => {
+    expect(calculateProteinTarget(70, "gain")).toBe(98);
+  });
+
+  it("rounds the protein target to whole grams", () => {
+    expect(calculateProteinTarget(63.5, "lose")).toBe(76);
+  });
+
+  it("rejects invalid weights", () => {
+    expect(() =>
+      calculateProteinTarget(0, "maintain")
+    ).toThrow();
+
+    expect(() =>
+      calculateProteinTarget(-5, "lose")
+    ).toThrow();
+
+    expect(() =>
+      calculateProteinTarget(NaN, "gain")
+    ).toThrow();
+  });
+
+  it("rejects invalid goals", () => {
+    expect(() =>
+      calculateProteinTarget(
+        70,
+        "invalid" as ProteinGoal
+      )
     ).toThrow();
   });
 });
