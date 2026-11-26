@@ -107,8 +107,8 @@ export default function MealPlanPage() {
                     className="flex justify-between gap-4 border-t border-gray-100 pt-3"
                   >
                     <div>
-                     <Link
-  href={`/recipes/${item.recipe.id}`}
+                    <Link
+  href={`/recipes/${item.recipe.id}?portions=${item.portions}`}
   className="font-medium text-green-700 hover:underline"
 >
   {item.recipe.name}

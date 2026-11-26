@@ -2,13 +2,27 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { recipes } from "../../lib/recipes";
+import { Suspense } from "react";
+import PersonalPortion from "./PersonalPortion";
 
 type RecipePageProps = {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{
+    portions?: string | string[];
+  }>;
 };
 
-export default async function RecipePage({
+export default function RecipePage(props: RecipePageProps) {
+  return (
+    <Suspense fallback={<p>Loading recipe...</p>}>
+      <RecipeContent {...props} />
+    </Suspense>
+  );
+}
+
+async function RecipeContent({
   params,
+  searchParams,
 }: RecipePageProps) {
   const { id } = await params;
 
@@ -53,7 +67,18 @@ export default async function RecipePage({
             values have not been verified.
           </div>
         )}
-
+<Suspense
+  fallback={
+    <p className="mt-6 text-sm text-gray-500">
+      Loading your portion...
+    </p>
+  }
+>
+  <PersonalPortion
+    recipe={recipe}
+    searchParams={searchParams}
+  />
+</Suspense>
         <section className="mt-6 rounded-xl bg-white p-5 shadow-sm">
           <h2 className="text-xl font-semibold text-gray-900">
             Nutrition per serving
